@@ -13,7 +13,6 @@ import (
 func backgroundPick(manager *CommonManager) {
 	defer manager.wg.Done()
 
-	fmt.Println("Picking...")
 	outboxConfig := manager.GetOutboxConfig()
 	groupID := outboxConfig.GetGroupID()
 	pollInterval := outboxConfig.GetPickPollInterval()
@@ -33,6 +32,7 @@ func backgroundPick(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, groupID)
 
 	for {
+		fmt.Println("Picking...")
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {

@@ -10,7 +10,6 @@ import (
 func backgroundZombiePick(manager *CommonManager) {
 	defer manager.wg.Done()
 
-	fmt.Println("Picking zombies...")
 	outboxConfig := manager.GetOutboxConfig()
 	outboxGroupID := outboxConfig.GetGroupID()
 	pollInterval := outboxConfig.GetPickZombiePollInterval()
@@ -32,6 +31,7 @@ func backgroundZombiePick(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, outboxGroupID, zombieInterval)
 
 	for {
+		fmt.Println("Picking zombies...")
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {

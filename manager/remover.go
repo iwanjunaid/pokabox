@@ -10,7 +10,6 @@ import (
 func backgroundRemove(manager *CommonManager) {
 	defer manager.wg.Done()
 
-	fmt.Println("Removing sent records...")
 	outboxConfig := manager.GetOutboxConfig()
 	outboxGroupID := outboxConfig.GetGroupID()
 	tableName := outboxConfig.GetOutboxTableName()
@@ -26,6 +25,7 @@ func backgroundRemove(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, outboxGroupID)
 
 	for {
+		fmt.Println("Removing sent records...")
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
