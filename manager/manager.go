@@ -131,9 +131,13 @@ func backgroundPick(manager *CommonManager) {
 			// TODO: Send to kafka
 
 			// Update status to 'SENT'
-			sentQuery := fmt.Sprintf(`UPDATE %s
-																SET status = 'SENT'
-																WHERE id = '%s'`, tableName, id.String)
+			q := `
+			UPDATE %s
+			SET status = 'SENT'
+			WHERE id = '%s'
+			`
+
+			sentQuery := fmt.Sprintf(q, tableName, id.String)
 			stmt, stmtErr := manager.GetDB().Prepare(sentQuery)
 
 			if err != nil {
