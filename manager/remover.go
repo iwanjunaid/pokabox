@@ -12,6 +12,8 @@ func backgroundRemove(manager *CommonManager) {
 
 	outboxConfig := manager.GetOutboxConfig()
 	outboxGroupID := outboxConfig.GetGroupID()
+	pollInterval := outboxConfig.GetRemoverPollInterval()
+	messageLimit := outboxConfig.GetRemoverMessageLimitPerPoll()
 	tableName := outboxConfig.GetOutboxTableName()
 
 	q := `
@@ -19,10 +21,10 @@ func backgroundRemove(manager *CommonManager) {
 	FROM %s
 	WHERE status = 'SENT'
 		AND group_id = '%s'
-	LIMIT 100
+	LIMIT %d
 	`
 
-	query := fmt.Sprintf(q, tableName, outboxGroupID)
+	query := fmt.Sprintf(q, tableName, outboxGroupID, messageLimit)
 
 	for {
 		fmt.Println("Removing sent records...")
@@ -65,7 +67,6 @@ func backgroundRemove(manager *CommonManager) {
 			rows.Close()
 		}
 
-		// TODO: sleep value should be fetch from config
-		time.Sleep(4 * time.Second)
+		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
 }

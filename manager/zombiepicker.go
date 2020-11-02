@@ -12,7 +12,8 @@ func backgroundZombiePick(manager *CommonManager) {
 
 	outboxConfig := manager.GetOutboxConfig()
 	outboxGroupID := outboxConfig.GetGroupID()
-	pollInterval := outboxConfig.GetPickZombiePollInterval()
+	pollInterval := outboxConfig.GetZombiePickerPollInterval()
+	messageLimit := outboxConfig.GetZombiePickerMessageLimitPerPoll()
 	zombieInterval := outboxConfig.GetZombieInterval()
 	tableName := outboxConfig.GetOutboxTableName()
 
@@ -26,9 +27,10 @@ func backgroundZombiePick(manager *CommonManager) {
 		AND group_id NOT IN ('%s')
 		AND NOW() - created_at > '%d second'::interval
 	ORDER BY priority, created_at
+	LIMIT %d
 	`
 
-	query := fmt.Sprintf(q, tableName, outboxGroupID, zombieInterval)
+	query := fmt.Sprintf(q, tableName, outboxGroupID, zombieInterval, messageLimit)
 
 	for {
 		fmt.Println("Picking zombies...")

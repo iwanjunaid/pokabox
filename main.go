@@ -36,7 +36,7 @@ func main() {
 		groupID = uuid.MustParse("1f830f06-fe7c-450e-b21f-0b8569aad756")
 	)
 
-	outboxConfig := config.NewCommonOutboxConfig(groupID, "outbox", 5, 10, 60, 10)
+	outboxConfig := config.NewDefaultCommonOutboxConfig(groupID)
 
 	var (
 		bootstrapServers = "127.0.0.1:9092"

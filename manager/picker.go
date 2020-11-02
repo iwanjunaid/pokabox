@@ -5,17 +5,15 @@ import (
 	"fmt"
 	"log"
 	"time"
-
-	"github.com/google/uuid"
-	"github.com/iwanjunaid/pokabox/model"
 )
 
 func backgroundPick(manager *CommonManager) {
 	defer manager.wg.Done()
 
 	outboxConfig := manager.GetOutboxConfig()
-	groupID := outboxConfig.GetGroupID()
-	pollInterval := outboxConfig.GetPickPollInterval()
+	outboxGroupID := outboxConfig.GetGroupID()
+	pollInterval := outboxConfig.GetPickerPollInterval()
+	messageLimit := outboxConfig.GetPickerMessageLimitPerPoll()
 	tableName := outboxConfig.GetOutboxTableName()
 
 	q := `
@@ -27,9 +25,10 @@ func backgroundPick(manager *CommonManager) {
 	WHERE status = 'NEW'
 		AND group_id = '%s'
 	ORDER BY priority, created_at
+	LIMIT %d
 	`
 
-	query := fmt.Sprintf(q, tableName, groupID)
+	query := fmt.Sprintf(q, tableName, outboxGroupID, messageLimit)
 
 	for {
 		fmt.Println("Picking...")
@@ -38,8 +37,6 @@ func backgroundPick(manager *CommonManager) {
 		if err != nil {
 			panic(err)
 		}
-
-		var records []*model.OutboxRecord
 
 		for rows.Next() {
 			var (
@@ -62,19 +59,6 @@ func backgroundPick(manager *CommonManager) {
 			if err != nil {
 				panic(err)
 			}
-
-			records = append(records, &model.OutboxRecord{
-				ID:         uuid.MustParse(id.String),
-				GroupID:    uuid.MustParse(groupID.String),
-				KafkaTopic: kafkaTopic.String,
-				KafkaKey:   kafkaKey.String,
-				KafkaValue: kafkaValue.String,
-				Priority:   uint(priority.Int32),
-				Status:     status.String,
-				Version:    uint(version.Int32),
-				CreatedAt:  createdAt.Time,
-				SentAt:     sentAt.Time,
-			})
 
 			// TODO: Send to kafka
 
