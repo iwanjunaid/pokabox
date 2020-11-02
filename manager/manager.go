@@ -71,14 +71,18 @@ func backgroundPick(manager *CommonManager) {
 	pollInterval := outboxConfig.GetPickPollInterval()
 	tableName := outboxConfig.GetOutboxTableName()
 
-	query := fmt.Sprintf(`SELECT id, group_id, kafka_topic,
-												kafka_key, kafka_value,
-												priority, status, version,
-												created_at, sent_at
-												FROM %s
-												WHERE status = 'NEW'
-													AND group_id = '%s'
-												ORDER BY priority, created_at`, tableName, groupID)
+	q := `
+	SELECT id, group_id, kafka_topic,
+		kafka_key, kafka_value,
+		priority, status, version,
+		created_at, sent_at
+	FROM %s
+	WHERE status = 'NEW'
+		AND group_id = '%s'
+	ORDER BY priority, created_at
+	`
+
+	query := fmt.Sprintf(q, tableName, groupID)
 
 	for {
 		rows, err := manager.GetDB().Query(query)
