@@ -41,13 +41,10 @@ func (m *CommonManager) GetDB() *sql.DB {
 }
 
 func (m *CommonManager) Start() error {
-	m.wg.Add(1)
+	m.wg.Add(3)
+
 	go backgroundPick(m)
-
-	m.wg.Add(1)
 	go backgroundZombiePick(m)
-
-	m.wg.Add(1)
 	go backgroundRemove(m)
 
 	return nil
