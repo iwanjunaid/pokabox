@@ -167,15 +167,19 @@ func backgroundZombiePick(manager *CommonManager) {
 	zombieInterval := outboxConfig.GetZombieInterval()
 	tableName := outboxConfig.GetOutboxTableName()
 
-	query := fmt.Sprintf(`SELECT id, group_id, kafka_topic,
-												kafka_key, kafka_value,
-												priority, status, version,
-												created_at, sent_at
-												FROM %s
-												WHERE status = 'NEW'
-													AND group_id NOT IN ('%s')
-													AND NOW() - created_at > '%d second'::interval
-												ORDER BY priority, created_at`, tableName, outboxGroupID, zombieInterval)
+	q := `
+	SELECT id, group_id, kafka_topic,
+	kafka_key, kafka_value,
+	priority, status, version,
+	created_at, sent_at
+	FROM %s
+	WHERE status = 'NEW'
+		AND group_id NOT IN ('%s')
+		AND NOW() - created_at > '%d second'::interval
+	ORDER BY priority, created_at
+	`
+
+	query := fmt.Sprintf(q, tableName, outboxGroupID, zombieInterval)
 
 	for {
 		rows, err := manager.GetDB().Query(query)
@@ -206,14 +210,16 @@ func backgroundZombiePick(manager *CommonManager) {
 				panic(err)
 			}
 
-			newVersion := version.Int32 + 1
-			updateQuery := fmt.Sprintf(`UPDATE %s
-																SET group_id = '%s'
-																	version = %d
-																WHERE group_id = '%s'
-																	AND version = %d`, tableName, outboxGroupID, newVersion, groupID.String, version.Int32)
+			q := `
+			UPDATE %s
+			SET group_id = '%s'
+				version = %d
+			WHERE group_id = '%s'
+				AND version = %d
+			`
 
-			fmt.Println("***updateQuery", updateQuery)
+			newVersion := version.Int32 + 1
+			updateQuery := fmt.Sprintf(q, tableName, outboxGroupID, newVersion, groupID.String, version.Int32)
 			stmt, stmtErr := manager.GetDB().Prepare(updateQuery)
 
 			if stmtErr != nil {
