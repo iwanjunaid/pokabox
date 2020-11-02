@@ -237,7 +237,6 @@ func backgroundZombiePick(manager *CommonManager) {
 
 		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
-
 }
 
 func backgroundRemove(manager *CommonManager) {
@@ -248,11 +247,15 @@ func backgroundRemove(manager *CommonManager) {
 	outboxGroupID := outboxConfig.GetGroupID()
 	tableName := outboxConfig.GetOutboxTableName()
 
-	query := fmt.Sprintf(`SELECT id
-												FROM %s
-												WHERE status = 'SENT'
-													AND group_id = '%s'
-												LIMIT 100`, tableName, outboxGroupID)
+	q := `
+	SELECT id
+	FROM %s
+	WHERE status = 'SENT'
+		AND group_id = '%s'
+	LIMIT 100
+	`
+
+	query := fmt.Sprintf(q, tableName, outboxGroupID)
 
 	for {
 		rows, err := manager.GetDB().Query(query)
@@ -272,10 +275,13 @@ func backgroundRemove(manager *CommonManager) {
 				log.Fatal(err)
 			}
 
-			deleteQuery := fmt.Sprintf(`DELETE FROM %s
-																	WHERE status = 'SENT'
-																		AND group_id = '%s'`, tableName, outboxGroupID)
+			q := `
+			DELETE FROM %s
+			WHERE status = 'SENT'
+				AND group_id = '%s'
+			`
 
+			deleteQuery := fmt.Sprintf(q, tableName, outboxGroupID)
 			stmt, stmtErr := manager.GetDB().Prepare(deleteQuery)
 
 			if stmtErr != nil {
@@ -290,8 +296,8 @@ func backgroundRemove(manager *CommonManager) {
 
 			rows.Close()
 		}
-	}
 
-	// TODO: sleep value should be fetch from config
-	time.Sleep(4 * time.Second)
+		// TODO: sleep value should be fetch from config
+		time.Sleep(4 * time.Second)
+	}
 }
