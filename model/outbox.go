@@ -1,8 +1,9 @@
 package model
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type OutboxRecord struct {
@@ -13,6 +14,7 @@ type OutboxRecord struct {
 	KafkaValue string
 	Priority   uint
 	Status     string
+	Version    uint
 	CreatedAt  time.Time
 	SentAt     time.Time
 }
