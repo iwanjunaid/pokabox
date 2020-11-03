@@ -6,6 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	FlagNew  = "NEW"
+	FlagSent = "SENT"
+)
+
 type OutboxRecord struct {
 	ID         uuid.UUID
 	GroupID    uuid.UUID
