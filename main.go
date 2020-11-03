@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/iwanjunaid/pokabox/config"
+	events "github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/internal/interfaces/event"
 	"github.com/iwanjunaid/pokabox/manager"
 	_ "github.com/lib/pq"
 )
@@ -43,9 +45,19 @@ func main() {
 	)
 
 	kafkaConfig := config.NewCommonKafkaConfig(bootstrapServers)
+	eventHandler := func(e event.Event) {
+		switch event := e.(type) {
+		case events.PickerStarted:
+			fmt.Printf("%v\n", event)
+		case events.Fetched:
+			fmt.Printf("%v\n", event)
+		case events.PickerPaused:
+			fmt.Printf("%v\n", event)
+		}
+	}
 
 	manager := manager.New(outboxConfig, kafkaConfig, db)
-
+	manager.SetEventHandler(eventHandler)
 	manager.Start()
 	manager.Await()
 }
