@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"sync"
 
+	"github.com/iwanjunaid/pokabox/event"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/config"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/manager"
 )
@@ -11,18 +12,20 @@ import (
 type CommonManager struct {
 	outboxConfig config.OutboxConfig
 	kafkaConfig  config.KafkaConfig
+	eventHandler event.EventHandler
 	db           *sql.DB
-	wg           sync.WaitGroup
+	wg           *sync.WaitGroup
 }
 
 func New(outboxConfig config.OutboxConfig, kafkaConfig config.KafkaConfig, db *sql.DB) manager.Manager {
 	var wg sync.WaitGroup
 
 	manager := &CommonManager{
-		outboxConfig,
-		kafkaConfig,
-		db,
-		wg,
+		outboxConfig: outboxConfig,
+		kafkaConfig:  kafkaConfig,
+		eventHandler: nil,
+		db:           db,
+		wg:           &wg,
 	}
 
 	return manager
@@ -34,6 +37,14 @@ func (m *CommonManager) GetOutboxConfig() config.OutboxConfig {
 
 func (m *CommonManager) GetKafkaConfig() config.KafkaConfig {
 	return m.kafkaConfig
+}
+
+func (m *CommonManager) SetEventHandler(e event.EventHandler) {
+	m.eventHandler = e
+}
+
+func (m *CommonManager) GetEventHandler() event.EventHandler {
+	return m.eventHandler
 }
 
 func (m *CommonManager) GetDB() *sql.DB {
