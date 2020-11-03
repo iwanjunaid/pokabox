@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/model"
 )
 
 func backgroundPick(manager *CommonManager) {
@@ -15,6 +19,7 @@ func backgroundPick(manager *CommonManager) {
 	pollInterval := outboxConfig.GetPickerPollInterval()
 	messageLimit := outboxConfig.GetPickerMessageLimitPerPoll()
 	tableName := outboxConfig.GetOutboxTableName()
+	eventHandler := manager.GetEventHandler()
 
 	q := `
 	SELECT id, group_id, kafka_topic,
@@ -22,16 +27,23 @@ func backgroundPick(manager *CommonManager) {
 		priority, status, version,
 		created_at, sent_at
 	FROM %s
-	WHERE status = 'NEW'
+	WHERE status = '%s'
 		AND group_id = '%s'
 	ORDER BY priority, created_at
 	LIMIT %d
 	`
 
-	query := fmt.Sprintf(q, tableName, outboxGroupID, messageLimit)
+	query := fmt.Sprintf(q, tableName, model.FlagNew, outboxGroupID, messageLimit)
 
 	for {
-		fmt.Println("Picking...")
+		if eventHandler != nil {
+			pickerStarted := event.PickerStarted{
+				GroupID: outboxGroupID,
+			}
+
+			eventHandler(pickerStarted)
+		}
+
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
@@ -60,16 +72,37 @@ func backgroundPick(manager *CommonManager) {
 				panic(err)
 			}
 
+			if eventHandler != nil {
+				record := &model.OutboxRecord{
+					ID:         uuid.MustParse(id.String),
+					GroupID:    uuid.MustParse(groupID.String),
+					KafkaTopic: kafkaTopic.String,
+					KafkaKey:   kafkaKey.String,
+					KafkaValue: kafkaValue.String,
+					Priority:   uint(priority.Int32),
+					Status:     status.String,
+					Version:    uint(version.Int32),
+					CreatedAt:  createdAt.Time,
+					SentAt:     sentAt.Time,
+				}
+
+				fetched := event.Fetched{
+					OutboxRecord: record,
+				}
+
+				eventHandler(fetched)
+			}
+
 			// TODO: Send to kafka
 
 			// Update status to 'SENT'
 			q := `
 			UPDATE %s
-			SET status = 'SENT'
+			SET status = '%s'
 			WHERE id = '%s'
 			`
 
-			sentQuery := fmt.Sprintf(q, tableName, id.String)
+			sentQuery := fmt.Sprintf(q, tableName, model.FlagSent, id.String)
 			stmt, stmtErr := manager.GetDB().Prepare(sentQuery)
 
 			if err != nil {
@@ -83,6 +116,14 @@ func backgroundPick(manager *CommonManager) {
 			}
 
 			rows.Close()
+		}
+
+		if eventHandler != nil {
+			pickerPaused := event.PickerPaused{
+				GroupID: outboxGroupID,
+			}
+
+			eventHandler(pickerPaused)
 		}
 
 		time.Sleep(time.Duration(pollInterval) * time.Second)
