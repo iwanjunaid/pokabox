@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/model"
 )
 
 func backgroundZombiePick(manager *CommonManager) {
@@ -16,6 +20,7 @@ func backgroundZombiePick(manager *CommonManager) {
 	messageLimit := outboxConfig.GetZombiePickerMessageLimitPerPoll()
 	zombieInterval := outboxConfig.GetZombieInterval()
 	tableName := outboxConfig.GetOutboxTableName()
+	eventHandler := manager.GetEventHandler()
 
 	q := `
 	SELECT id, group_id, kafka_topic,
@@ -33,11 +38,20 @@ func backgroundZombiePick(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, outboxGroupID, zombieInterval, messageLimit)
 
 	for {
-		fmt.Println("Picking zombies...")
+		// Emit event ZombiePickerStarted
+		if eventHandler != nil {
+			eventZombiePickerStarted := event.ZombiePickerStarted{
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
+			}
+
+			eventHandler(eventZombiePickerStarted)
+		}
+
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 
 		for rows.Next() {
@@ -62,9 +76,35 @@ func backgroundZombiePick(manager *CommonManager) {
 				panic(err)
 			}
 
+			// Emit event ZombiePicked
+			var record *model.OutboxRecord
+
+			if eventHandler != nil {
+				record = &model.OutboxRecord{
+					ID:         uuid.MustParse(id.String),
+					GroupID:    uuid.MustParse(groupID.String),
+					KafkaTopic: kafkaTopic.String,
+					KafkaKey:   kafkaKey.String,
+					KafkaValue: kafkaValue.String,
+					Priority:   uint(priority.Int32),
+					Status:     status.String,
+					Version:    uint(version.Int32),
+					CreatedAt:  createdAt.Time,
+					SentAt:     sentAt.Time,
+				}
+
+				zombiePicked := event.ZombiePicked{
+					PickerGroupID: outboxGroupID,
+					OutboxRecord:  record,
+					Timestamp:     time.Now(),
+				}
+
+				eventHandler(zombiePicked)
+			}
+
 			q := `
 			UPDATE %s
-			SET group_id = '%s'
+			SET group_id = '%s',
 				version = %d
 			WHERE group_id = '%s'
 				AND version = %d
@@ -84,7 +124,31 @@ func backgroundZombiePick(manager *CommonManager) {
 				log.Fatal(execErr)
 			}
 
+			// Emit event ZombieAcquired
+			if eventHandler != nil {
+				originGroupID := record.GroupID
+				record.GroupID = outboxGroupID
+				eventZombieAcquired := event.ZombieAcquired{
+					PickerGroupID: outboxGroupID,
+					OriginGroupID: originGroupID,
+					OutboxRecord:  record,
+					Timestamp:     time.Now(),
+				}
+
+				eventHandler(eventZombieAcquired)
+			}
+
 			rows.Close()
+		}
+
+		// Emit event ZombiePickerPaused
+		if eventHandler != nil {
+			eventZombiePickerPaused := event.ZombiePickerPaused{
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
+			}
+
+			eventHandler(eventZombiePickerPaused)
 		}
 
 		time.Sleep(time.Duration(pollInterval) * time.Second)
