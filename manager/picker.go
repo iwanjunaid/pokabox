@@ -90,11 +90,11 @@ func backgroundPick(manager *CommonManager) {
 					SentAt:     sentAt.Time,
 				}
 
-				fetched := event.Fetched{
+				picked := event.Picked{
 					OutboxRecord: record,
 				}
 
-				eventHandler(fetched)
+				eventHandler(picked)
 			}
 
 			// TODO: Send to kafka
