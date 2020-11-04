@@ -36,6 +36,7 @@ func backgroundPick(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, model.FlagNew, outboxGroupID, messageLimit)
 
 	for {
+		// Emit event PickerStarted
 		if eventHandler != nil {
 			pickerStarted := event.PickerStarted{
 				GroupID: outboxGroupID,
@@ -72,8 +73,11 @@ func backgroundPick(manager *CommonManager) {
 				panic(err)
 			}
 
+			// Emit event Fetched
+			var record *model.OutboxRecord
+
 			if eventHandler != nil {
-				record := &model.OutboxRecord{
+				record = &model.OutboxRecord{
 					ID:         uuid.MustParse(id.String),
 					GroupID:    uuid.MustParse(groupID.String),
 					KafkaTopic: kafkaTopic.String,
@@ -96,28 +100,43 @@ func backgroundPick(manager *CommonManager) {
 			// TODO: Send to kafka
 
 			// Update status to 'SENT'
+			newSentAt := time.Now()
 			q := `
 			UPDATE %s
-			SET status = '%s'
+			SET status = $1,
+				sent_at = $2
 			WHERE id = '%s'
 			`
 
-			sentQuery := fmt.Sprintf(q, tableName, model.FlagSent, id.String)
+			sentQuery := fmt.Sprintf(q, tableName, id.String)
 			stmt, stmtErr := manager.GetDB().Prepare(sentQuery)
 
 			if err != nil {
 				log.Fatal(stmtErr)
 			}
 
-			_, execErr := stmt.Exec()
+			_, execErr := stmt.Exec(model.FlagSent, newSentAt)
 
 			if execErr != nil {
 				log.Fatal(execErr)
 			}
 
+			// Emit event StatusChanged
+			if eventHandler != nil {
+
+				eventStatusChanged := event.StatusChanged{
+					From:         model.FlagNew,
+					To:           model.FlagSent,
+					OutboxRecord: record,
+				}
+
+				eventHandler(eventStatusChanged)
+			}
+
 			rows.Close()
 		}
 
+		// Emit event PickerPaused
 		if eventHandler != nil {
 			pickerPaused := event.PickerPaused{
 				GroupID: outboxGroupID,
