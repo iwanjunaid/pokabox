@@ -55,6 +55,20 @@ func main() {
 			fmt.Printf("%v\n", event)
 		case events.PickerPaused:
 			fmt.Printf("%v\n", event)
+		case events.ZombiePickerStarted:
+			fmt.Printf("%v\n", event)
+		case events.ZombiePicked:
+			fmt.Printf("%v\n", event)
+		case events.ZombieAcquired:
+			fmt.Printf("%v\n", event)
+		case events.ZombiePickerPaused:
+			fmt.Printf("%v\n", event)
+		case events.RemoverStarted:
+			fmt.Printf("%v\n", event)
+		case events.Removed:
+			fmt.Printf("%v\n", event)
+		case events.RemoverPaused:
+			fmt.Printf("%v\n", event)
 		}
 	}
 
