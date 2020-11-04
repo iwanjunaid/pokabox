@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/iwanjunaid/pokabox/model"
+
+	"github.com/iwanjunaid/pokabox/event"
 )
 
 func backgroundRemove(manager *CommonManager) {
@@ -15,9 +20,13 @@ func backgroundRemove(manager *CommonManager) {
 	pollInterval := outboxConfig.GetRemoverPollInterval()
 	messageLimit := outboxConfig.GetRemoverMessageLimitPerPoll()
 	tableName := outboxConfig.GetOutboxTableName()
+	eventHandler := manager.GetEventHandler()
 
 	q := `
-	SELECT id
+	SELECT id, group_id, kafka_topic,
+		kafka_key, kafka_value,
+		priority, status, version,
+		created_at, sent_at
 	FROM %s
 	WHERE status = 'SENT'
 		AND group_id = '%s'
@@ -27,7 +36,15 @@ func backgroundRemove(manager *CommonManager) {
 	query := fmt.Sprintf(q, tableName, outboxGroupID, messageLimit)
 
 	for {
-		fmt.Println("Removing sent records...")
+		// Emit event RemoverStarted
+		if eventHandler != nil {
+			eventRemoverStarted := event.RemoverStarted{
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
+			}
+
+			eventHandler(eventRemoverStarted)
+		}
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
@@ -36,10 +53,21 @@ func backgroundRemove(manager *CommonManager) {
 
 		for rows.Next() {
 			var (
-				id sql.NullString
+				id         sql.NullString
+				groupID    sql.NullString
+				kafkaTopic sql.NullString
+				kafkaKey   sql.NullString
+				kafkaValue sql.NullString
+				priority   sql.NullInt32
+				status     sql.NullString
+				version    sql.NullInt32
+				createdAt  sql.NullTime
+				sentAt     sql.NullTime
 			)
 
-			err := rows.Scan(&id)
+			err := rows.Scan(&id, &groupID, &kafkaTopic, &kafkaKey,
+				&kafkaValue, &priority, &status, &version,
+				&createdAt, &sentAt)
 
 			if err != nil {
 				log.Fatal(err)
@@ -64,7 +92,43 @@ func backgroundRemove(manager *CommonManager) {
 				log.Fatal(execErr)
 			}
 
+			var record *model.OutboxRecord
+
+			// Emit event Removed
+			if eventHandler != nil {
+				record = &model.OutboxRecord{
+					ID:         uuid.MustParse(id.String),
+					GroupID:    uuid.MustParse(groupID.String),
+					KafkaTopic: kafkaTopic.String,
+					KafkaKey:   kafkaKey.String,
+					KafkaValue: kafkaValue.String,
+					Priority:   uint(priority.Int32),
+					Status:     status.String,
+					Version:    uint(version.Int32),
+					CreatedAt:  createdAt.Time,
+					SentAt:     sentAt.Time,
+				}
+
+				eventRemoved := event.Removed{
+					PickerGroupID: outboxGroupID,
+					OutboxRecord:  record,
+					Timestamp:     time.Now(),
+				}
+
+				eventHandler(eventRemoved)
+			}
+
 			rows.Close()
+		}
+
+		// Emit event RemoverPaused
+		if eventHandler != nil {
+			eventRemoverPaused := event.RemoverPaused{
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
+			}
+
+			eventHandler(eventRemoverPaused)
 		}
 
 		time.Sleep(time.Duration(pollInterval) * time.Second)
