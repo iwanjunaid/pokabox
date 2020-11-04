@@ -39,7 +39,8 @@ func backgroundPick(manager *CommonManager) {
 		// Emit event PickerStarted
 		if eventHandler != nil {
 			pickerStarted := event.PickerStarted{
-				GroupID: outboxGroupID,
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
 			}
 
 			eventHandler(pickerStarted)
@@ -92,6 +93,7 @@ func backgroundPick(manager *CommonManager) {
 
 				picked := event.Picked{
 					OutboxRecord: record,
+					Timestamp:    time.Now(),
 				}
 
 				eventHandler(picked)
@@ -129,6 +131,7 @@ func backgroundPick(manager *CommonManager) {
 					From:         model.FlagNew,
 					To:           model.FlagSent,
 					OutboxRecord: record,
+					Timestamp:    time.Now(),
 				}
 
 				eventHandler(eventStatusChanged)
@@ -140,7 +143,8 @@ func backgroundPick(manager *CommonManager) {
 		// Emit event PickerPaused
 		if eventHandler != nil {
 			pickerPaused := event.PickerPaused{
-				GroupID: outboxGroupID,
+				PickerGroupID: outboxGroupID,
+				Timestamp:     time.Now(),
 			}
 
 			eventHandler(pickerPaused)
