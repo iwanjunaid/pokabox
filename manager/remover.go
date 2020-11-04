@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iwanjunaid/pokabox/model"
-
 	"github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/model"
 )
 
 func backgroundRemove(manager *CommonManager) {
