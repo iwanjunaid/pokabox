@@ -4,6 +4,6 @@ import (
 	"github.com/iwanjunaid/pokabox/internal/interfaces/event"
 )
 
-const PREFIX = "outbox"
+const PREFIX = "pokabox"
 
 type EventHandler func(event.Event)
