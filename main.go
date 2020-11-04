@@ -51,6 +51,8 @@ func main() {
 			fmt.Printf("%v\n", event)
 		case events.Fetched:
 			fmt.Printf("%v\n", event)
+		case events.StatusChanged:
+			fmt.Printf("%v\n", event)
 		case events.PickerPaused:
 			fmt.Printf("%v\n", event)
 		}
