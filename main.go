@@ -49,7 +49,7 @@ func main() {
 		switch event := e.(type) {
 		case events.PickerStarted:
 			fmt.Printf("%v\n", event)
-		case events.Fetched:
+		case events.Picked:
 			fmt.Printf("%v\n", event)
 		case events.StatusChanged:
 			fmt.Printf("%v\n", event)
