@@ -2,6 +2,7 @@ package event
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iwanjunaid/pokabox/model"
@@ -11,6 +12,7 @@ type StatusChanged struct {
 	From         string
 	To           string
 	OutboxRecord *model.OutboxRecord
+	Timestamp    time.Time
 }
 
 func (s StatusChanged) String() string {
@@ -21,7 +23,7 @@ func (s StatusChanged) String() string {
 		PREFIX, groupID, s.From, s.To, id)
 }
 
-func (s StatusChanged) GetGroupID() uuid.UUID {
+func (s StatusChanged) GetPickerGroupID() uuid.UUID {
 	return s.OutboxRecord.GroupID
 }
 
@@ -35,4 +37,8 @@ func (s StatusChanged) GetTo() string {
 
 func (s StatusChanged) GetRecord() *model.OutboxRecord {
 	return s.OutboxRecord
+}
+
+func (s StatusChanged) GetTimestamp() time.Time {
+	return s.Timestamp
 }
