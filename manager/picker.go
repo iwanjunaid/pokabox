@@ -123,7 +123,6 @@ func backgroundPick(manager *CommonManager) {
 
 			// Emit event StatusChanged
 			if eventHandler != nil {
-
 				eventStatusChanged := event.StatusChanged{
 					From:         model.FlagNew,
 					To:           model.FlagSent,
