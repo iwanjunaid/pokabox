@@ -1,21 +1,22 @@
 package config
 
 import (
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/config"
 )
 
 type CommonKafkaConfig struct {
-	BootstrapServers string
+	configMap *kafka.ConfigMap
 }
 
-func NewCommonKafkaConfig(bootstrapServers string) config.KafkaConfig {
+func NewCommonKafkaConfig(configMap *kafka.ConfigMap) config.KafkaConfig {
 	config := &CommonKafkaConfig{
-		bootstrapServers,
+		configMap,
 	}
 
 	return config
 }
 
-func (c *CommonKafkaConfig) GetBootstrapServers() string {
-	return c.BootstrapServers
+func (c *CommonKafkaConfig) GetConfigMap() *kafka.ConfigMap {
+	return c.configMap
 }
