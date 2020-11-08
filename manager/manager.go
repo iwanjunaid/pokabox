@@ -4,31 +4,40 @@ import (
 	"database/sql"
 	"sync"
 
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/iwanjunaid/pokabox/event"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/config"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/manager"
 )
 
 type CommonManager struct {
-	outboxConfig config.OutboxConfig
-	kafkaConfig  config.KafkaConfig
-	eventHandler event.EventHandler
-	db           *sql.DB
-	wg           *sync.WaitGroup
+	outboxConfig  config.OutboxConfig
+	kafkaConfig   config.KafkaConfig
+	kafkaProducer *kafka.Producer
+	eventHandler  event.EventHandler
+	db            *sql.DB
+	wg            *sync.WaitGroup
 }
 
-func New(outboxConfig config.OutboxConfig, kafkaConfig config.KafkaConfig, db *sql.DB) manager.Manager {
+func New(outboxConfig config.OutboxConfig, kafkaConfig config.KafkaConfig, db *sql.DB) (manager.Manager, error) {
 	var wg sync.WaitGroup
 
-	manager := &CommonManager{
-		outboxConfig: outboxConfig,
-		kafkaConfig:  kafkaConfig,
-		eventHandler: nil,
-		db:           db,
-		wg:           &wg,
+	kafkaProducer, err := kafka.NewProducer(kafkaConfig.GetConfigMap())
+
+	if err != nil {
+		return nil, err
 	}
 
-	return manager
+	manager := &CommonManager{
+		outboxConfig:  outboxConfig,
+		kafkaConfig:   kafkaConfig,
+		kafkaProducer: kafkaProducer,
+		eventHandler:  nil,
+		db:            db,
+		wg:            &wg,
+	}
+
+	return manager, nil
 }
 
 func (m *CommonManager) GetOutboxConfig() config.OutboxConfig {
@@ -37,6 +46,10 @@ func (m *CommonManager) GetOutboxConfig() config.OutboxConfig {
 
 func (m *CommonManager) GetKafkaConfig() config.KafkaConfig {
 	return m.kafkaConfig
+}
+
+func (m *CommonManager) GetKafkaProducer() *kafka.Producer {
+	return m.kafkaProducer
 }
 
 func (m *CommonManager) SetEventHandler(e event.EventHandler) {

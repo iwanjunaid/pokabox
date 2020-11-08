@@ -40,7 +40,7 @@ func NewCommonOutboxConfig(groupID uuid.UUID, outboxTableName string,
 		cPickerPollInterval = pickerPollInterval
 	}
 
-	cPickerMessageLimitPerPoll := 100
+	cPickerMessageLimitPerPoll := 5
 
 	if pickerMessageLimitPerPoll >= 1 {
 		cPickerMessageLimitPerPoll = pickerMessageLimitPerPoll

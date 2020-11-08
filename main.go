@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/google/uuid"
-
 	"github.com/iwanjunaid/pokabox/config"
 	events "github.com/iwanjunaid/pokabox/event"
 	"github.com/iwanjunaid/pokabox/internal/interfaces/event"
@@ -39,17 +39,19 @@ func main() {
 	)
 
 	outboxConfig := config.NewDefaultCommonOutboxConfig(groupID)
+	kafkaConfigMap := &kafka.ConfigMap{
+		"bootstrap.servers": "127.0.0.1:9092",
+		"acks":              "all",
+	}
 
-	var (
-		bootstrapServers = "127.0.0.1:9092"
-	)
-
-	kafkaConfig := config.NewCommonKafkaConfig(bootstrapServers)
+	kafkaConfig := config.NewCommonKafkaConfig(kafkaConfigMap)
 	eventHandler := func(e event.Event) {
 		switch event := e.(type) {
 		case events.PickerStarted:
 			fmt.Printf("%v\n", event)
 		case events.Picked:
+			fmt.Printf("%v\n", event)
+		case events.Sent:
 			fmt.Printf("%v\n", event)
 		case events.StatusChanged:
 			fmt.Printf("%v\n", event)
@@ -69,10 +71,17 @@ func main() {
 			fmt.Printf("%v\n", event)
 		case events.RemoverPaused:
 			fmt.Printf("%v\n", event)
+		case events.ErrorOccured:
+			fmt.Printf("%v\n", event)
 		}
 	}
 
-	manager := manager.New(outboxConfig, kafkaConfig, db)
+	manager, err := manager.New(outboxConfig, kafkaConfig, db)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	manager.SetEventHandler(eventHandler)
 	manager.Start()
 	manager.Await()

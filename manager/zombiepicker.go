@@ -3,11 +3,10 @@ package manager
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/event/emitter"
 	"github.com/iwanjunaid/pokabox/model"
 )
 
@@ -39,22 +38,19 @@ func backgroundZombiePick(manager *CommonManager) {
 
 	for {
 		// Emit event ZombiePickerStarted
-		if eventHandler != nil {
-			eventZombiePickerStarted := event.ZombiePickerStarted{
-				PickerGroupID: outboxGroupID,
-				Timestamp:     time.Now(),
-			}
+		emitter.EmitEventZombiePickerStarted(eventHandler, time.Now(), outboxGroupID)
 
-			eventHandler(eventZombiePickerStarted)
-		}
-
+		recordsFound := false
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
-			log.Fatal(err)
+			emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, err)
+			panic(err)
 		}
 
 		for rows.Next() {
+			recordsFound = true
+
 			var (
 				id         sql.NullString
 				groupID    sql.NullString
@@ -73,84 +69,73 @@ func backgroundZombiePick(manager *CommonManager) {
 				&createdAt, &sentAt)
 
 			if err != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, err)
 				panic(err)
 			}
 
-			// Emit event ZombiePicked
 			var record *model.OutboxRecord
 
-			if eventHandler != nil {
-				record = &model.OutboxRecord{
-					ID:         uuid.MustParse(id.String),
-					GroupID:    uuid.MustParse(groupID.String),
-					KafkaTopic: kafkaTopic.String,
-					KafkaKey:   kafkaKey.String,
-					KafkaValue: kafkaValue.String,
-					Priority:   uint(priority.Int32),
-					Status:     status.String,
-					Version:    uint(version.Int32),
-					CreatedAt:  createdAt.Time,
-					SentAt:     sentAt.Time,
-				}
-
-				zombiePicked := event.ZombiePicked{
-					PickerGroupID: outboxGroupID,
-					OutboxRecord:  record,
-					Timestamp:     time.Now(),
-				}
-
-				eventHandler(zombiePicked)
+			record = &model.OutboxRecord{
+				ID:         uuid.MustParse(id.String),
+				GroupID:    uuid.MustParse(groupID.String),
+				KafkaTopic: kafkaTopic.String,
+				KafkaKey:   kafkaKey.String,
+				KafkaValue: kafkaValue.String,
+				Priority:   uint(priority.Int32),
+				Status:     status.String,
+				Version:    uint(version.Int32),
+				CreatedAt:  createdAt.Time,
+				SentAt:     sentAt.Time,
 			}
+
+			// Emit event ZombiePicked
+			emitter.EmitEventZombiePicked(eventHandler, time.Now(),
+				outboxGroupID, record)
 
 			q := `
 			UPDATE %s
-			SET group_id = '%s',
-				version = %d
-			WHERE group_id = '%s'
-				AND version = %d
+			SET group_id = '%s', version = %d
+			WHERE id = '%s' AND version = %d
 			`
 
 			newVersion := version.Int32 + 1
-			updateQuery := fmt.Sprintf(q, tableName, outboxGroupID, newVersion, groupID.String, version.Int32)
+			updateQuery := fmt.Sprintf(q, tableName, outboxGroupID, newVersion, id.String, version.Int32)
 			stmt, stmtErr := manager.GetDB().Prepare(updateQuery)
 
 			if stmtErr != nil {
-				log.Fatal(stmtErr)
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, stmtErr)
+				panic(stmtErr)
 			}
 
-			_, execErr := stmt.Exec()
+			result, execErr := stmt.Exec()
 
 			if execErr != nil {
-				log.Fatal(execErr)
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, execErr)
+				panic(execErr)
+			}
+
+			rowsAffected, affectedErr := result.RowsAffected()
+
+			if affectedErr != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, affectedErr)
+				panic(affectedErr)
 			}
 
 			// Emit event ZombieAcquired
-			if eventHandler != nil {
-				originGroupID := record.GroupID
-				record.GroupID = outboxGroupID
-				eventZombieAcquired := event.ZombieAcquired{
-					PickerGroupID: outboxGroupID,
-					OriginGroupID: originGroupID,
-					OutboxRecord:  record,
-					Timestamp:     time.Now(),
-				}
-
-				eventHandler(eventZombieAcquired)
+			if rowsAffected > 0 {
+				emitter.EmitEventZombieAcquired(eventHandler, time.Now(),
+					outboxGroupID, record.GroupID, record)
 			}
-
-			rows.Close()
 		}
 
-		// Emit event ZombiePickerPaused
-		if eventHandler != nil {
-			eventZombiePickerPaused := event.ZombiePickerPaused{
-				PickerGroupID: outboxGroupID,
-				Timestamp:     time.Now(),
-			}
+		rows.Close()
 
-			eventHandler(eventZombiePickerPaused)
+		if !recordsFound {
+			// Emit event ZombiePickerPaused
+			emitter.EmitEventZombiePickerPaused(eventHandler, time.Now(), outboxGroupID)
+
+			// Pause zombie picker
+			time.Sleep(time.Duration(pollInterval) * time.Second)
 		}
-
-		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
 }

@@ -3,16 +3,28 @@ package manager
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/google/uuid"
-	"github.com/iwanjunaid/pokabox/event"
+	"github.com/iwanjunaid/pokabox/event/emitter"
 	"github.com/iwanjunaid/pokabox/model"
 )
 
 func backgroundPick(manager *CommonManager) {
 	defer manager.wg.Done()
+	defer func() {
+		r := recover()
+
+		fmt.Println("Recover from panic")
+
+		if _, ok := r.(error); ok {
+			manager.wg.Add(1)
+			time.Sleep(3 * time.Second)
+
+			go backgroundPick(manager)
+		}
+	}()
 
 	outboxConfig := manager.GetOutboxConfig()
 	outboxGroupID := outboxConfig.GetGroupID()
@@ -37,22 +49,19 @@ func backgroundPick(manager *CommonManager) {
 
 	for {
 		// Emit event PickerStarted
-		if eventHandler != nil {
-			pickerStarted := event.PickerStarted{
-				PickerGroupID: outboxGroupID,
-				Timestamp:     time.Now(),
-			}
+		emitter.EmitEventPickerStarted(eventHandler, time.Now(), outboxGroupID)
 
-			eventHandler(pickerStarted)
-		}
-
+		recordsFound := false
 		rows, err := manager.GetDB().Query(query)
 
 		if err != nil {
+			emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, err)
 			panic(err)
 		}
 
 		for rows.Next() {
+			recordsFound = true
+
 			var (
 				id         sql.NullString
 				groupID    sql.NullString
@@ -71,35 +80,66 @@ func backgroundPick(manager *CommonManager) {
 				&createdAt, &sentAt)
 
 			if err != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, err)
 				panic(err)
 			}
 
-			// Emit event Fetched
+			// Emit event Picked
 			var record *model.OutboxRecord
 
-			if eventHandler != nil {
-				record = &model.OutboxRecord{
-					ID:         uuid.MustParse(id.String),
-					GroupID:    uuid.MustParse(groupID.String),
-					KafkaTopic: kafkaTopic.String,
-					KafkaKey:   kafkaKey.String,
-					KafkaValue: kafkaValue.String,
-					Priority:   uint(priority.Int32),
-					Status:     status.String,
-					Version:    uint(version.Int32),
-					CreatedAt:  createdAt.Time,
-					SentAt:     sentAt.Time,
-				}
-
-				picked := event.Picked{
-					OutboxRecord: record,
-					Timestamp:    time.Now(),
-				}
-
-				eventHandler(picked)
+			record = &model.OutboxRecord{
+				ID:         uuid.MustParse(id.String),
+				GroupID:    uuid.MustParse(groupID.String),
+				KafkaTopic: kafkaTopic.String,
+				KafkaKey:   kafkaKey.String,
+				KafkaValue: kafkaValue.String,
+				Priority:   uint(priority.Int32),
+				Status:     status.String,
+				Version:    uint(version.Int32),
+				CreatedAt:  createdAt.Time,
+				SentAt:     sentAt.Time,
 			}
 
-			// TODO: Send to kafka
+			// Emit event Picked
+			emitter.EmitEventPicked(eventHandler, time.Now(), record)
+
+			// Send to kafka
+			deliveryChan := make(chan kafka.Event, 10000)
+			kafkaProducer := manager.GetKafkaProducer()
+
+			var key []byte
+
+			if kafkaKey.String != "" {
+				key = []byte(kafkaKey.String)
+			}
+
+			errProduce := kafkaProducer.Produce(&kafka.Message{
+				TopicPartition: kafka.TopicPartition{Topic: &kafkaTopic.String, Partition: kafka.PartitionAny},
+				Value:          []byte(kafkaValue.String),
+				Key:            key,
+			}, deliveryChan)
+
+			if errProduce != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(), outboxGroupID, errProduce)
+				panic(errProduce)
+			}
+
+			kafkaEvent := <-deliveryChan
+			kafkaMessage := kafkaEvent.(*kafka.Message)
+
+			if parErr := kafkaMessage.TopicPartition.Error; parErr != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(),
+					outboxGroupID, parErr)
+				panic(parErr)
+			}
+
+			// Emit event Sent
+			emitter.EmitEventSent(eventHandler, time.Now(), outboxGroupID,
+				*kafkaMessage.TopicPartition.Topic,
+				kafkaMessage.TopicPartition.Partition,
+				record)
+
+			close(deliveryChan)
 
 			// Update status to 'SENT'
 			newSentAt := time.Now()
@@ -113,43 +153,33 @@ func backgroundPick(manager *CommonManager) {
 			sentQuery := fmt.Sprintf(q, tableName, id.String)
 			stmt, stmtErr := manager.GetDB().Prepare(sentQuery)
 
-			if err != nil {
-				log.Fatal(stmtErr)
+			if stmtErr != nil {
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(),
+					outboxGroupID, stmtErr)
+				panic(stmtErr)
 			}
 
 			_, execErr := stmt.Exec(model.FlagSent, newSentAt)
 
 			if execErr != nil {
-				log.Fatal(execErr)
+				emitter.EmitEventErrorOccured(eventHandler, time.Now(),
+					outboxGroupID, execErr)
+				panic(execErr)
 			}
 
 			// Emit event StatusChanged
-			if eventHandler != nil {
-				record.Status = model.FlagSent
-				record.SentAt = newSentAt
-				eventStatusChanged := event.StatusChanged{
-					From:         model.FlagNew,
-					To:           model.FlagSent,
-					OutboxRecord: record,
-					Timestamp:    time.Now(),
-				}
-
-				eventHandler(eventStatusChanged)
-			}
-
-			rows.Close()
+			emitter.EmitEventStatusChanged(eventHandler, time.Now(),
+				model.FlagNew, model.FlagSent, record)
 		}
 
-		// Emit event PickerPaused
-		if eventHandler != nil {
-			pickerPaused := event.PickerPaused{
-				PickerGroupID: outboxGroupID,
-				Timestamp:     time.Now(),
-			}
+		rows.Close()
 
-			eventHandler(pickerPaused)
+		if !recordsFound {
+			// Emit event PickerPaused
+			emitter.EmitEventPickerPaused(eventHandler, time.Now(), outboxGroupID)
+
+			// Pause picker
+			time.Sleep(time.Duration(pollInterval) * time.Second)
 		}
-
-		time.Sleep(time.Duration(pollInterval) * time.Second)
 	}
 }

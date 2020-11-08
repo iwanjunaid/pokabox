@@ -16,7 +16,22 @@ TODO
 
 ## Getting Started
 
-TODO
+1. Create ```outbox``` table
+
+```sql
+CREATE TABLE outbox(
+  id            UUID PRIMARY KEY,
+  group_id      UUID NOT NULL,
+  kafka_topic   VARCHAR(255) NOT NULL,
+  kafka_key     VARCHAR(255) DEFAULT NULL,
+  kafka_value   TEXT NOT NULL,
+  priority      INT DEFAULT 1000,
+  status        VARCHAR(4) DEFAULT 'NEW',
+  version       INTEGER DEFAULT 1,
+  created_at    TIMESTAMP NOT NULL,
+  sent_at       TIMESTAMP DEFAULT NULL
+);
+```
 
 ## Events Handling
 
